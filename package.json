@@ -1,0 +1,75 @@
+{
+  "name": "python-paste-pro",
+  "version": "0.0.0",
+  "publisher": "00",
+  "engines": {
+    "vscode": "^1.97.0"
+  },
+  "displayName": "Python Paste Pro",
+  "description": "Enhances Python pasting in VSCode with smart indentation",
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "paste",
+    "pycharm",
+    "python"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pythonPastePro.paste",
+        "title": "Paste like Python Paste Pro"
+      },
+      {
+        "command": "pythonPastePro.cut",
+        "title": "Cut like Python Paste Pro"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "-editor.action.clipboardCutAction",
+        "key": "ctrl+x",
+        "mac": "cmd+x",
+        "when": "editorLangId == 'python'"
+      },
+      {
+        "command": "-editor.action.clipboardPasteAction",
+        "key": "ctrl+v",
+        "mac": "cmd+v",
+        "when": "editorLangId == 'python'"
+      },
+      {
+        "command": "pythonPastePro.cut",
+        "key": "ctrl+x",
+        "mac": "cmd+x",
+        "when": "editorLangId == 'python'"
+      },
+      {
+        "command": "pythonPastePro.paste",
+        "key": "ctrl+v",
+        "mac": "cmd+v",
+        "when": "editorLangId == 'python'"
+      }
+    ]
+  },
+  "activationEvents": [],
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.97.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.19.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lmmtrr/python-paste-pro.git"
+  }
+}
