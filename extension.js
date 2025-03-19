@@ -136,9 +136,9 @@ function indentLines(lines, baseIndentLevel, indentUnit, hasLostIndent) {
 
 /**
  * Performs a cut operation, adjusting indentation of subsequent lines if needed.
+ * @param {vscode.TextEditor} editor - The active text editor.
  */
-async function cut() {
-  const editor = vscode.window.activeTextEditor;
+async function cut(editor) {
   if (!editor || editor.document.languageId !== "python") return;
   const selection = editor.selection;
   if (selection.isEmpty) return;
@@ -202,9 +202,9 @@ async function cut() {
 
 /**
  * Performs a paste operation with proper indentation adjustment for Python code.
+ * @param {vscode.TextEditor} editor - The active text editor.
  */
-async function paste() {
-  const editor = vscode.window.activeTextEditor;
+async function paste(editor) {
   if (!editor || editor.document.languageId !== "python") return;
   const clipboardText = await vscode.env.clipboard.readText();
   if (!clipboardText.trim()) return;
@@ -257,8 +257,8 @@ async function paste() {
  */
 function activate(context) {
   context.subscriptions.push(
-    vscode.commands.registerCommand("pythonPastePro.cut", cut),
-    vscode.commands.registerCommand("pythonPastePro.paste", paste)
+    vscode.commands.registerTextEditorCommand("pythonPastePro.cut", cut),
+    vscode.commands.registerTextEditorCommand("pythonPastePro.paste", paste)
   );
 }
 

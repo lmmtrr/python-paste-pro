@@ -1,6 +1,6 @@
 {
   "name": "python-paste-pro",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "publisher": "00",
   "engines": {
     "vscode": "^1.97.0"
@@ -32,25 +32,25 @@
         "command": "-editor.action.clipboardCutAction",
         "key": "ctrl+x",
         "mac": "cmd+x",
-        "when": "editorLangId == 'python'"
+        "when": "editorTextFocus && editorLangId == python"
       },
       {
         "command": "-editor.action.clipboardPasteAction",
         "key": "ctrl+v",
         "mac": "cmd+v",
-        "when": "editorLangId == 'python'"
+        "when": "editorTextFocus && editorLangId == python"
       },
       {
         "command": "pythonPastePro.cut",
         "key": "ctrl+x",
         "mac": "cmd+x",
-        "when": "editorLangId == 'python'"
+        "when": "editorTextFocus && editorLangId == python"
       },
       {
         "command": "pythonPastePro.paste",
         "key": "ctrl+v",
         "mac": "cmd+v",
-        "when": "editorLangId == 'python'"
+        "when": "editorTextFocus && editorLangId == python"
       }
     ]
   },
