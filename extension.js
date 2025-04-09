@@ -233,21 +233,27 @@ async function paste(editor) {
   );
   let insertText = indentedLines.join(separator);
   await editor.edit((editBuilder) => {
+    let finalInsertText = insertText;
+    const pos = selection.start;
+    if (pos.character > 0) {
+      const line = editor.document.lineAt(pos.line).text;
+      const charBefore = line[pos.character - 1];
+      if (charBefore !== " " && charBefore !== "\t") {
+        finalInsertText = finalInsertText.replace(/^\s+/, "");
+      }
+    }
     const startLine = selection.start.line;
     const endLine = selection.end.line;
     const endChar = selection.end.character;
     let newPosition;
     if (startLine + 1 === endLine && endChar === 0) {
-      insertText += "\n";
+      finalInsertText += "\n";
       editBuilder.delete(selection);
-      newPosition = new vscode.Position(
-        selection.start.line,
-        selection.start.character
-      );
+      newPosition = new vscode.Position(pos.line, pos.character);
     } else {
       newPosition = removeSurroundingWhitespace(editor, editBuilder);
     }
-    editBuilder.insert(newPosition, insertText);
+    editBuilder.insert(newPosition, finalInsertText);
   });
 }
 
