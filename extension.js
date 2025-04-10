@@ -71,6 +71,29 @@ function getBaseIndentLevel(editor, selection, indentUnit) {
 }
 
 /**
+ * Determines the indentation unit used in a given set of lines, limited to 1-4 spaces.
+ * Analyzes lines starting from the second line to infer the smallest number of leading spaces.
+ * Returns the default of 4 spaces if no valid indent is found or if the indent exceeds 4 spaces.
+ * @param {string[]} lines - An array of lines from the input text.
+ * @returns {string} The inferred indentation unit (e.g., "  " for 2 spaces) or "    " as default.
+ */
+function getGuessedIndentUnit(lines) {
+  const linesWithIndent = lines.slice(1).filter((line) => /^\s+/.test(line));
+  const defaultIndent = "    ";
+  if (linesWithIndent.length === 0) {
+    return defaultIndent;
+  }
+  const spaceCounts = linesWithIndent.map((line) => {
+    const match = line.match(/^ +/);
+    return match ? match[0].length : 0;
+  });
+  const minSpaceCount = Math.min(...spaceCounts);
+  return minSpaceCount > 0 && minSpaceCount <= 4
+    ? " ".repeat(minSpaceCount)
+    : defaultIndent;
+}
+
+/**
  * Applies proper indentation to an array of text lines based on Python code structure.
  * @param {string[]} lines - The array of text lines to indent.
  * @param {number} baseIndentLevel - The base indentation level in units.
@@ -213,15 +236,12 @@ async function paste(editor) {
   const baseIndentLevel = getBaseIndentLevel(editor, selection, indentUnit);
   const lineEndingPattern = clipboardText.includes("\r\n") ? "\\r\\n" : "\\n";
   const trimmedInput = clipboardText
-    .trimRight()
+    .trimEnd()
     .replace(new RegExp(`^${lineEndingPattern}+`), "");
   const separator = clipboardText.includes("\r\n") ? "\r\n" : "\n";
   const lines = trimmedInput.split(separator);
   const hasLostIndent = lines.every((line) => !/^\s+/.test(line));
-  const linesWithIndent = lines.filter((line) => /^\s+/.test(line));
-  const guessedIndentUnit = linesWithIndent.every((line) => /^\t+/.test(line))
-    ? "\t"
-    : "    ";
+  const guessedIndentUnit = getGuessedIndentUnit(lines);
   const normalizedLines = lines.map((line) =>
     line.replaceAll(guessedIndentUnit, indentUnit)
   );
