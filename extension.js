@@ -55,6 +55,7 @@ function getBaseIndentLevel(editor, selection, indentUnit) {
   const currentLine = editor.document.lineAt(position.line);
   const currentIndent = currentLine.text.match(/^\s*/)[0];
   if (
+    selection.isEmpty &&
     currentIndent.length > 0 &&
     currentIndent.length % indentUnit.length === 0
   ) {
@@ -63,6 +64,7 @@ function getBaseIndentLevel(editor, selection, indentUnit) {
   const prevLineNumber = position.line - 1;
   if (prevLineNumber < 0) return 0;
   const prevLine = editor.document.lineAt(prevLineNumber);
+  if (prevLine.text.trim() === "") return 0;
   const prevIndent = prevLine.text.match(/^\s*/)[0];
   const prevIndentLevel = prevIndent.length / indentUnit.length;
   return prevLine.text.trim().endsWith(":")
@@ -153,7 +155,6 @@ function indentLines(lines, baseIndentLevel, indentUnit, hasLostIndent) {
     indentedLines.push(newIndent + trimmedLine);
     previousLineIndent = currentIndent;
   }
-
   return indentedLines;
 }
 
@@ -165,11 +166,25 @@ async function cut(editor) {
   if (!editor || editor.document.languageId !== "python") return;
   const selection = editor.selection;
   if (selection.isEmpty) return;
-  const startLine = selection.start.line;
-  const baseLine = editor.document.lineAt(startLine);
-  const indentUnit = getIndentUnit(editor);
   await editor.edit((editBuilder) => {
+    const selectedText = editor.document
+      .getText(new vscode.Range(selection.start, selection.end))
+      .trim();
+    editBuilder.delete(selection);
+    vscode.env.clipboard.writeText(selectedText);
+    const startLine = selection.start.line;
+    const endLine = selection.end.line;
+    const endChar = selection.end.character;
+    const isSingleLine = startLine === endLine;
+    const isSingleLineWithNewline = startLine + 1 === endLine && endChar === 0;
+    if (
+      !((isSingleLine || isSingleLineWithNewline) && selectedText.endsWith(":"))
+    ) {
+      return;
+    }
     const totalLines = editor.document.lineCount;
+    const baseLine = editor.document.lineAt(startLine);
+    const indentUnit = getIndentUnit(editor);
     const baseIndent = baseLine.text.match(/^\s*/)?.[0] || "";
     const baseIndentLevel = baseIndent.length / indentUnit.length;
 
@@ -185,28 +200,8 @@ async function cut(editor) {
       if (currentIndentLevel <= baseIndentLevel) break;
     }
 
-    // Adjust the selection range for cutting
-    const endLine = selection.end.line;
-    const selectedRange = new vscode.Range(
-      selection.start,
-      selection.end.character === 0 && endLine > startLine
-        ? new vscode.Position(
-            endLine - 1,
-            editor.document.lineAt(endLine - 1).text.length
-          )
-        : selection.end
-    );
-    const selectedText = editor.document.getText(selectedRange).trim();
-    const isEffectivelySingleLine =
-      startLine === endLine ||
-      (endLine === startLine + 1 && selection.end.character === 0);
-
     // Dedent following lines if cutting a single line ending with a colon
-    if (
-      isEffectivelySingleLine &&
-      selectedText.endsWith(":") &&
-      startLineToDedent < totalLines
-    ) {
+    if (startLineToDedent < totalLines) {
       for (let i = startLineToDedent; i < endLineToDedent - 1; i++) {
         const line = editor.document.lineAt(i);
         const currentIndent = line.text.match(/^\s+/)?.[0] || "";
@@ -217,9 +212,6 @@ async function cut(editor) {
         }
       }
     }
-
-    editBuilder.delete(selection);
-    vscode.env.clipboard.writeText(selectedText);
   });
 }
 
@@ -255,21 +247,30 @@ async function paste(editor) {
   await editor.edit((editBuilder) => {
     let finalInsertText = insertText;
     const pos = selection.start;
-    if (pos.character > 0) {
-      const line = editor.document.lineAt(pos.line).text;
-      const charBefore = line[pos.character - 1];
-      if (charBefore !== " " && charBefore !== "\t") {
-        finalInsertText = finalInsertText.replace(/^\s+/, "");
-      }
-    }
     const startLine = selection.start.line;
     const endLine = selection.end.line;
     const endChar = selection.end.character;
+    const isSingleLine = startLine === endLine;
+    const isSingleLineWithNewline = startLine + 1 === endLine && endChar === 0;
+    if (pos.character > 0) {
+      const line = editor.document.lineAt(pos.line).text;
+      const textBefore = line.substring(0, pos.character);
+      const textAfter = line.substring(pos.character);
+      if (
+        isSingleLine &&
+        (!/^\s*$/.test(textBefore) || !/^\s*$/.test(textAfter))
+      ) {
+        finalInsertText = finalInsertText.replace(/^\s+/, "");
+      }
+    }
     let newPosition;
-    if (startLine + 1 === endLine && endChar === 0) {
+    if (isSingleLineWithNewline) {
       finalInsertText += "\n";
       editBuilder.delete(selection);
       newPosition = new vscode.Position(pos.line, pos.character);
+    } else if (isSingleLine && !selection.isEmpty) {
+      editBuilder.delete(selection);
+      newPosition = selection.start;
     } else {
       newPosition = removeSurroundingWhitespace(editor, editBuilder);
     }
