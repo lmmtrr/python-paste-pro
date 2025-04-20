@@ -10,24 +10,30 @@ function removeSurroundingWhitespace(editor, editBuilder) {
   const document = editor.document;
   const startPos = editor.selection.start;
   const endPos = editor.selection.end;
-  const line = document.lineAt(startPos.line);
-  const text = line.text;
+  let newStartLine = startPos.line;
   let newStartCharacter = startPos.character;
-  while (newStartCharacter > 0 && /[ \t]/.test(text[newStartCharacter - 1])) {
-    newStartCharacter--;
-  }
+  let newEndLine = endPos.line;
   let newEndCharacter = endPos.character;
-  while (newEndCharacter < text.length && /[ \t]/.test(text[newEndCharacter])) {
-    newEndCharacter++;
+  const startLine = document.lineAt(startPos.line);
+  const startText = startLine.text;
+  const isStartWhitespace = /^[\s\t]*$/.test(startText.substring(0, startPos.character));
+  if (isStartWhitespace) {
+    newStartCharacter = 0;
+  }
+  const endLine = document.lineAt(endPos.line);
+  const endText = endLine.text;
+  const isEndWhitespace = /^[\s\t]*$/.test(endText.substring(endPos.character));
+  if (isEndWhitespace) {
+    newEndCharacter = endText.length;
   }
   const rangeToDelete = new vscode.Range(
-    startPos.line,
+    newStartLine,
     newStartCharacter,
-    endPos.line,
+    newEndLine,
     newEndCharacter
   );
   editBuilder.delete(rangeToDelete);
-  return new vscode.Position(startPos.line, newStartCharacter);
+  return new vscode.Position(newStartLine, newStartCharacter);
 }
 
 /**
@@ -60,6 +66,10 @@ function getBaseIndentLevel(editor, selection, indentUnit) {
     currentIndent.length % indentUnit.length === 0
   ) {
     return currentIndent.length / indentUnit.length;
+  } else if (!selection.isEmpty && position.character % indentUnit.length !== 0) {
+    return currentIndent.length / indentUnit.length;
+  } else if (!selection.isEmpty && position.character % indentUnit.length === 0) {
+    return position.character / indentUnit.length;
   }
   const prevLineNumber = position.line - 1;
   if (prevLineNumber < 0) return 0;
@@ -110,7 +120,6 @@ function indentLines(lines, baseIndentLevel, indentUnit, hasLostIndent) {
     !firstLine.startsWith("#") && /[:({[]$/.test(firstLine) ? 1 : 0;
   let previousLineIndent = "";
   let isPreviousLineIndentSet = false;
-  let additionalIndentLevel = 0;
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     const trimmedLine = line.trim();
@@ -118,42 +127,37 @@ function indentLines(lines, baseIndentLevel, indentUnit, hasLostIndent) {
       indentedLines.push("");
       continue;
     }
-
-    // Determine the original indentation of the current line
-    const currentIndent = line.match(/^\s*/)[0];
-    if (!isPreviousLineIndentSet) {
-      previousLineIndent = currentIndent;
-      const firstIndent = firstLine.match(/^\s*/)[0];
-      if (
-        firstIndent.length > 0 &&
-        firstIndent.length % indentUnit.length === 0
-      ) {
-        previousLineIndent = firstIndent;
-        if (/[:({[]$/.test(firstLine))
-          previousLineIndent += indentUnit.repeat(1);
-      }
-      isPreviousLineIndentSet = true;
-    }
-
-    // Calculate the difference in indentation from the previous line
-    const indentDiff =
-      (currentIndent.length - previousLineIndent.length) / indentUnit.length;
-    currentIndentLevel += indentDiff;
-    let newIndentLevel = baseIndentLevel + currentIndentLevel;
-
-    // Adjust indentation when original indentation is lost
+    let newIndentLevel;
     if (hasLostIndent) {
-      if (additionalIndentLevel > 0 && newIndentLevel === 0) {
-        newIndentLevel = additionalIndentLevel;
-      }
+      newIndentLevel = baseIndentLevel + currentIndentLevel;
+      indentedLines.push(indentUnit.repeat(newIndentLevel) + trimmedLine);
       if (!trimmedLine.startsWith("#") && trimmedLine.endsWith(":")) {
-        additionalIndentLevel++;
+        currentIndentLevel += 1;
       }
+    } else {
+      const currentIndent = line.match(/^\s*/)[0];
+      if (!isPreviousLineIndentSet) {
+        previousLineIndent = currentIndent;
+        const firstIndent = firstLine.match(/^\s*/)[0];
+        if (
+          firstIndent.length > 0 &&
+          firstIndent.length % indentUnit.length === 0
+        ) {
+          previousLineIndent = firstIndent;
+          if (/[:({[]$/.test(firstLine))
+            previousLineIndent += indentUnit.repeat(1);
+        }
+        isPreviousLineIndentSet = true;
+      }
+      const indentDiff =
+        (currentIndent.length - previousLineIndent.length) / indentUnit.length;
+      currentIndentLevel += indentDiff;
+      newIndentLevel = baseIndentLevel + currentIndentLevel;
+      indentedLines.push(
+        indentUnit.repeat(Math.max(0, newIndentLevel)) + trimmedLine
+      );
+      previousLineIndent = currentIndent;
     }
-
-    const newIndent = indentUnit.repeat(Math.max(0, newIndentLevel));
-    indentedLines.push(newIndent + trimmedLine);
-    previousLineIndent = currentIndent;
   }
   return indentedLines;
 }
@@ -292,6 +296,6 @@ function activate(context) {
 /**
  * Deactivates the extension.
  */
-function deactivate() {}
+function deactivate() { }
 
 module.exports = { activate, deactivate };
