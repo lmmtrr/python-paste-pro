@@ -37,16 +37,13 @@ function removeSurroundingWhitespace(editor, editBuilder) {
 }
 
 /**
- * Retrieves the indentation unit (spaces or tabs) based on editor settings.
+ * Retrieves the indentation unit (spaces or tabs) based on the editor's current file settings.
  * @param {vscode.TextEditor} editor - The active text editor.
  * @returns {string} The indentation unit (e.g., "  " or "\t").
  */
 function getIndentUnit(editor) {
-  const config = vscode.workspace.getConfiguration(
-    "editor",
-    editor.document.uri
-  );
-  return config.get("insertSpaces") ? " ".repeat(config.get("tabSize")) : "\t";
+  const { tabSize, insertSpaces } = editor.options;
+  return insertSpaces ? " ".repeat(tabSize) : "\t";
 }
 
 /**
@@ -71,15 +68,7 @@ function getBaseIndentLevel(editor, selection, indentUnit) {
   } else if (!selection.isEmpty && position.character % indentUnit.length === 0) {
     return position.character / indentUnit.length;
   }
-  const prevLineNumber = position.line - 1;
-  if (prevLineNumber < 0) return 0;
-  const prevLine = editor.document.lineAt(prevLineNumber);
-  if (prevLine.text.trim() === "") return 0;
-  const prevIndent = prevLine.text.match(/^\s*/)[0];
-  const prevIndentLevel = prevIndent.length / indentUnit.length;
-  return prevLine.text.trim().endsWith(":")
-    ? prevIndentLevel + 1
-    : prevIndentLevel;
+  return 0;
 }
 
 /**
@@ -231,11 +220,12 @@ async function paste(editor) {
   const indentUnit = getIndentUnit(editor);
   const baseIndentLevel = getBaseIndentLevel(editor, selection, indentUnit);
   const lineEndingPattern = clipboardText.includes("\r\n") ? "\\r\\n" : "\\n";
-  const trimmedInput = clipboardText
+  const processedText = clipboardText
     .trimEnd()
-    .replace(new RegExp(`^${lineEndingPattern}+`), "");
+    .replace(new RegExp(`^${lineEndingPattern}+`), "")
+    .replace(/^(>>> |\.\.\. )/m, '');
   const separator = clipboardText.includes("\r\n") ? "\r\n" : "\n";
-  const lines = trimmedInput.split(separator);
+  const lines = processedText.split(separator);
   const hasLostIndent = lines.every((line) => !/^\s+/.test(line));
   const guessedIndentUnit = getGuessedIndentUnit(lines);
   const normalizedLines = lines.map((line) =>
