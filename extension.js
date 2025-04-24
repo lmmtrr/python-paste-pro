@@ -17,7 +17,7 @@ function removeSurroundingWhitespace(editor, editBuilder) {
   const startLine = document.lineAt(startPos.line);
   const startText = startLine.text;
   const isStartWhitespace = /^[\s\t]*$/.test(startText.substring(0, startPos.character));
-  if (isStartWhitespace) {
+  if (isStartWhitespace && (newStartCharacter === newEndCharacter || newStartLine !== newEndLine)) {
     newStartCharacter = 0;
   }
   const endLine = document.lineAt(endPos.line);
@@ -35,6 +35,7 @@ function removeSurroundingWhitespace(editor, editBuilder) {
   editBuilder.delete(rangeToDelete);
   return new vscode.Position(newStartLine, newStartCharacter);
 }
+
 
 /**
  * Retrieves the indentation unit (spaces or tabs) based on the editor's current file settings.
@@ -65,10 +66,18 @@ function getBaseIndentLevel(editor, selection, indentUnit) {
     return currentIndent.length / indentUnit.length;
   } else if (!selection.isEmpty && position.character % indentUnit.length !== 0) {
     return currentIndent.length / indentUnit.length;
-  } else if (!selection.isEmpty && position.character % indentUnit.length === 0) {
+  } else if (!selection.isEmpty && position.character % indentUnit.length === 0 && position.character !== 0) {
     return position.character / indentUnit.length;
   }
-  return 0;
+  const prevLineNumber = position.line - 1;
+  if (prevLineNumber < 0) return 0;
+  const prevLine = editor.document.lineAt(prevLineNumber);
+  if (prevLine.text.trim() === "") return 0;
+  const prevIndent = prevLine.text.match(/^\s*/)[0];
+  const prevIndentLevel = prevIndent.length / indentUnit.length;
+  return prevLine.text.trim().endsWith(":")
+    ? prevIndentLevel + 1
+    : prevIndentLevel;
 }
 
 /**
@@ -222,7 +231,7 @@ async function paste(editor) {
   const lineEndingPattern = clipboardText.includes("\r\n") ? "\\r\\n" : "\\n";
   const processedText = clipboardText
     .trimEnd()
-    .replace(new RegExp(`^${lineEndingPattern}+`), "")
+    .replace(new RegExp(`^(?:${lineEndingPattern})+`), '')
     .replace(/^(>>> |\.\.\. )/m, '');
   const separator = clipboardText.includes("\r\n") ? "\r\n" : "\n";
   const lines = processedText.split(separator);
@@ -257,17 +266,8 @@ async function paste(editor) {
         finalInsertText = finalInsertText.replace(/^\s+/, "");
       }
     }
-    let newPosition;
-    if (isSingleLineWithNewline) {
-      finalInsertText += "\n";
-      editBuilder.delete(selection);
-      newPosition = new vscode.Position(pos.line, pos.character);
-    } else if (isSingleLine && !selection.isEmpty) {
-      editBuilder.delete(selection);
-      newPosition = selection.start;
-    } else {
-      newPosition = removeSurroundingWhitespace(editor, editBuilder);
-    }
+    if (isSingleLineWithNewline) finalInsertText += "\n";
+    let newPosition = removeSurroundingWhitespace(editor, editBuilder);
     editBuilder.insert(newPosition, finalInsertText);
   });
 }
