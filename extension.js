@@ -1,6 +1,212 @@
 const vscode = require("vscode");
 
 /**
+ * Retrieves the indentation unit (spaces or tabs) based on the editor's current file settings.
+ * @param {vscode.TextEditor} editor - The active text editor.
+ * @returns {string} The indentation unit (e.g., "  " or "\t").
+ */
+function getIndentUnit(editor) {
+  const { tabSize, insertSpaces } = editor.options;
+  return insertSpaces ? " ".repeat(tabSize) : "\t";
+}
+
+/**
+ * Extracts the code part of a line, removing comments and trailing whitespace.
+ * @param {string} line - The input line of text.
+ * @returns {string} The code part of the line, with comments removed and trailing whitespace trimmed.
+ */
+function getCodePart(line) {
+  const index = line.indexOf('#');
+  const codePart = index >= 0 ? line.substring(0, index) : line;
+  return codePart.trimEnd();
+}
+
+/**
+ * Determines the indentation unit used in a given set of lines, limited to 1-4 spaces.
+ * Analyzes lines starting from the second line to infer the smallest number of leading spaces.
+ * Returns the default of 4 spaces if no valid indent is found or if the indent exceeds 4 spaces.
+ * @param {string[]} lines - An array of lines from the input text.
+ * @param {string} indentUnit - The indentation unit (spaces or tabs).
+ * @returns {string} The inferred indentation unit (e.g., "  " for 2 spaces) or "    " as default.
+ */
+function getGuessedIndentUnit(lines, indentUnit) {
+  const linesWithIndent = lines.slice(1).filter((line) => /^\s+/.test(line));
+  if (linesWithIndent.length === 0) {
+    return indentUnit;
+  }
+  const spaceCounts = linesWithIndent.map((line) => {
+    const match = line.match(/^ +/);
+    return match ? match[0].length : 0;
+  });
+  const minSpaceCount = Math.min(...spaceCounts);
+  return minSpaceCount > 0 && minSpaceCount <= 4
+    ? " ".repeat(minSpaceCount)
+    : indentUnit;
+}
+
+/**
+ * Applies proper indentation to an array of text lines based on Python code structure.
+ * @param {string[]} lines - The array of text lines to indent.
+ * @param {number} baseIndentLevel - The base indentation level in units.
+ * @param {string} indentUnit - The indentation unit (spaces or tabs).
+ * @param {boolean} hasLostIndent - Indicates if the lines have lost their original indentation.
+ * @returns {string[]} The array of indented lines.
+ */
+function indentLines(lines, baseIndentLevel, indentUnit, hasLostIndent) {
+  const firstLine = lines[0];
+  const indentedLines = [indentUnit.repeat(baseIndentLevel) + firstLine.trim()];
+  let currentIndentLevel =
+    !firstLine.startsWith("#") && /[:({[]$/.test(getCodePart(firstLine)) ? 1 : 0;
+  let previousLineIndent = "";
+  let isPreviousLineIndentSet = false;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
+      indentedLines.push("");
+      continue;
+    }
+    let newIndentLevel;
+    if (hasLostIndent) {
+      newIndentLevel = baseIndentLevel + currentIndentLevel;
+      indentedLines.push(indentUnit.repeat(newIndentLevel) + trimmedLine);
+      if (!trimmedLine.startsWith("#") && getCodePart(trimmedLine).endsWith(':')) {
+        currentIndentLevel += 1;
+      }
+    } else {
+      const currentIndent = line.match(/^\s*/)[0];
+      if (!isPreviousLineIndentSet) {
+        previousLineIndent = currentIndent;
+        const firstIndent = firstLine.match(/^\s*/)[0];
+        if (
+          firstIndent.length > 0 &&
+          firstIndent.length % indentUnit.length === 0
+        ) {
+          previousLineIndent = firstIndent;
+          if (/[:({[]$/.test(getCodePart(firstLine)))
+            previousLineIndent += indentUnit.repeat(1);
+        }
+        isPreviousLineIndentSet = true;
+      }
+      const indentDiff =
+        (currentIndent.length - previousLineIndent.length) / indentUnit.length;
+      currentIndentLevel += indentDiff;
+      newIndentLevel = baseIndentLevel + currentIndentLevel;
+      indentedLines.push(
+        indentUnit.repeat(Math.max(0, newIndentLevel)) + trimmedLine
+      );
+      previousLineIndent = currentIndent;
+    }
+  }
+  return indentedLines;
+}
+
+/**
+ * Calculates the properly indented lines for pasting.
+ * @param {string[]} processedLines - Lines after preprocessing.
+ * @param {number} baseIndentLevel - The base indentation level for pasting.
+ * @param {string} indentUnit - The indentation unit ("  ", "\t", etc.).
+ * @returns {string[]} The array of lines with correct indentation applied.
+ */
+function calculateIndentedLines(processedLines, baseIndentLevel, indentUnit) {
+  const hasLostIndent = processedLines.every((line) => !/^\s+/.test(line));
+  const guessedIndentUnit = getGuessedIndentUnit(processedLines, indentUnit);
+  const normalizedLines = processedLines.map((line) =>
+    line.replaceAll(guessedIndentUnit, indentUnit)
+  );
+  return indentLines(
+    normalizedLines,
+    baseIndentLevel,
+    indentUnit,
+    hasLostIndent
+  );
+}
+
+/**
+ * Preprocesses the clipboard text for pasting.
+ * Removes leading/trailing whitespace, handles Python REPL prompts, and splits into lines.
+ * @param {string} clipboardText - The raw text from the clipboard.
+ * @returns {{lines: string[], separator: string}} An object containing the processed lines and the detected line separator.
+ */
+function preprocessClipboardText(clipboardText) {
+  const lineEndingPattern = clipboardText.includes("\r\n") ? "\\r\\n" : "\\n";
+  const processedText = clipboardText
+    .trimEnd()
+    .replace(new RegExp(`^(?:${lineEndingPattern})+`), '')
+    .replace(/^(>>> |\.\.\. )/gm, '');
+  const separator = clipboardText.includes("\r\n") ? "\r\n" : "\n";
+  const lines = processedText.split(separator);
+  return { lines, separator };
+}
+
+/**
+ * Determines the base indentation level for the current selection.
+ * @param {vscode.TextEditor} editor - The active text editor.
+ * @param {string} indentUnit - The indentation unit (spaces or tabs).
+ * @returns {number} The base indentation level in units.
+ */
+function getBaseIndentLevel(editor, indentUnit) {
+  const selection = editor.selection;
+  const startPos = selection.start;
+  const startLine = startPos.line;
+  const startCharacter = startPos.character;
+  const currentLine = editor.document.lineAt(startLine);
+  const currentIndent = currentLine.text.match(/^\s*/)[0];
+  if (
+    selection.isEmpty &&
+    currentIndent.length > 0 &&
+    currentIndent.length % indentUnit.length === 0
+  ) {
+    return currentIndent.length / indentUnit.length;
+  } else if (!selection.isEmpty && startCharacter === 0) {
+    return currentIndent.length / indentUnit.length;
+  } else if (startCharacter % indentUnit.length !== 0) {
+    return currentIndent.length / indentUnit.length;
+  } else if (startCharacter % indentUnit.length === 0 && startCharacter !== 0) {
+    return startCharacter / indentUnit.length;
+  }
+  const prevLineNumber = startLine - 1;
+  if (prevLineNumber < 0) return 0;
+  const prevLine = editor.document.lineAt(prevLineNumber);
+  if (prevLine.text.trim() === "") return 0;
+  const prevIndent = prevLine.text.match(/^\s*/)[0];
+  const prevIndentLevel = prevIndent.length / indentUnit.length;
+  return getCodePart(prevLine.text).endsWith(':')
+    ? prevIndentLevel + 1
+    : prevIndentLevel;
+}
+
+/**
+ * Adjusts the text to be inserted if pasting mid-line under specific conditions.
+ * Removes leading indent from the first line if pasting into non-whitespace content.
+ * @param {vscode.TextEditor} editor - The active text editor.
+ * @param {vscode.Selection} selection - The current selection.
+ * @param {string} insertText - The text intended for insertion.
+ * @returns {string} The potentially adjusted insert text.
+ */
+function adjustInsertTextForMidLinePaste(editor, selection, insertText) {
+  const pos = selection.start;
+  const startLine = selection.start.line;
+  const endLine = selection.end.line;
+  const endChar = selection.end.character;
+  const isSingleLine = startLine === endLine;
+  if (pos.character > 0) {
+    const line = editor.document.lineAt(pos.line).text;
+    const textBefore = line.substring(0, pos.character);
+    const textAfter = line.substring(pos.character);
+    const textBeforeIsWhitespace = /^\s*$/.test(textBefore);
+    const textAfterIsWhitespace = /^\s*$/.test(textAfter);
+    if (
+      isSingleLine &&
+      (!textBeforeIsWhitespace || (endChar !== line.length && !textAfterIsWhitespace))
+    ) {
+      return insertText.replace(/^\s+/, "");
+    }
+  }
+  return insertText;
+}
+
+/**
  * Removes surrounding whitespace (spaces or tabs) around the cursor position.
  * @param {vscode.TextEditor} editor - The active text editor.
  * @param {vscode.TextEditorEdit} editBuilder - The edit builder for modifying the document.
@@ -38,201 +244,6 @@ function removeSurroundingWhitespace(editor, editBuilder) {
 }
 
 /**
- * Retrieves the indentation unit (spaces or tabs) based on the editor's current file settings.
- * @param {vscode.TextEditor} editor - The active text editor.
- * @returns {string} The indentation unit (e.g., "  " or "\t").
- */
-function getIndentUnit(editor) {
-  const { tabSize, insertSpaces } = editor.options;
-  return insertSpaces ? " ".repeat(tabSize) : "\t";
-}
-
-/**
- * Determines the base indentation level for the current selection.
- * @param {vscode.TextEditor} editor - The active text editor.
- * @param {string} indentUnit - The indentation unit (spaces or tabs).
- * @returns {number} The base indentation level in units.
- */
-function getBaseIndentLevel(editor, indentUnit) {
-  const selection = editor.selection;
-  const startPos = selection.start;
-  const startLine = startPos.line;
-  const startCharacter = startPos.character;
-  const currentLine = editor.document.lineAt(startLine);
-  const currentIndent = currentLine.text.match(/^\s*/)[0];
-  if (
-    selection.isEmpty &&
-    currentIndent.length > 0 &&
-    currentIndent.length % indentUnit.length === 0
-  ) {
-    return currentIndent.length / indentUnit.length;
-  } else if (!selection.isEmpty && startCharacter === 0) {
-    return currentIndent.length / indentUnit.length;
-  } else if (startCharacter % indentUnit.length !== 0) {
-    return currentIndent.length / indentUnit.length;
-  } else if (startCharacter % indentUnit.length === 0 && startCharacter !== 0) {
-    return startCharacter / indentUnit.length;
-  }
-  const prevLineNumber = startLine - 1;
-  if (prevLineNumber < 0) return 0;
-  const prevLine = editor.document.lineAt(prevLineNumber);
-  if (prevLine.text.trim() === "") return 0;
-  const prevIndent = prevLine.text.match(/^\s*/)[0];
-  const prevIndentLevel = prevIndent.length / indentUnit.length;
-  return prevLine.text.trim().endsWith(":")
-    ? prevIndentLevel + 1
-    : prevIndentLevel;
-}
-
-/**
- * Determines the indentation unit used in a given set of lines, limited to 1-4 spaces.
- * Analyzes lines starting from the second line to infer the smallest number of leading spaces.
- * Returns the default of 4 spaces if no valid indent is found or if the indent exceeds 4 spaces.
- * @param {string[]} lines - An array of lines from the input text.
- * @returns {string} The inferred indentation unit (e.g., "  " for 2 spaces) or "    " as default.
- */
-function getGuessedIndentUnit(lines) {
-  const linesWithIndent = lines.slice(1).filter((line) => /^\s+/.test(line));
-  const defaultIndent = "    ";
-  if (linesWithIndent.length === 0) {
-    return defaultIndent;
-  }
-  const spaceCounts = linesWithIndent.map((line) => {
-    const match = line.match(/^ +/);
-    return match ? match[0].length : 0;
-  });
-  const minSpaceCount = Math.min(...spaceCounts);
-  return minSpaceCount > 0 && minSpaceCount <= 4
-    ? " ".repeat(minSpaceCount)
-    : defaultIndent;
-}
-
-/**
- * Applies proper indentation to an array of text lines based on Python code structure.
- * @param {string[]} lines - The array of text lines to indent.
- * @param {number} baseIndentLevel - The base indentation level in units.
- * @param {string} indentUnit - The indentation unit (spaces or tabs).
- * @param {boolean} hasLostIndent - Indicates if the lines have lost their original indentation.
- * @returns {string[]} The array of indented lines.
- */
-function indentLines(lines, baseIndentLevel, indentUnit, hasLostIndent) {
-  const firstLine = lines[0];
-  const indentedLines = [indentUnit.repeat(baseIndentLevel) + firstLine.trim()];
-  let currentIndentLevel =
-    !firstLine.startsWith("#") && /[:({[]$/.test(firstLine) ? 1 : 0;
-  let previousLineIndent = "";
-  let isPreviousLineIndentSet = false;
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmedLine = line.trim();
-    if (!trimmedLine) {
-      indentedLines.push("");
-      continue;
-    }
-    let newIndentLevel;
-    if (hasLostIndent) {
-      newIndentLevel = baseIndentLevel + currentIndentLevel;
-      indentedLines.push(indentUnit.repeat(newIndentLevel) + trimmedLine);
-      if (!trimmedLine.startsWith("#") && trimmedLine.endsWith(":")) {
-        currentIndentLevel += 1;
-      }
-    } else {
-      const currentIndent = line.match(/^\s*/)[0];
-      if (!isPreviousLineIndentSet) {
-        previousLineIndent = currentIndent;
-        const firstIndent = firstLine.match(/^\s*/)[0];
-        if (
-          firstIndent.length > 0 &&
-          firstIndent.length % indentUnit.length === 0
-        ) {
-          previousLineIndent = firstIndent;
-          if (/[:({[]$/.test(firstLine))
-            previousLineIndent += indentUnit.repeat(1);
-        }
-        isPreviousLineIndentSet = true;
-      }
-      const indentDiff =
-        (currentIndent.length - previousLineIndent.length) / indentUnit.length;
-      currentIndentLevel += indentDiff;
-      newIndentLevel = baseIndentLevel + currentIndentLevel;
-      indentedLines.push(
-        indentUnit.repeat(Math.max(0, newIndentLevel)) + trimmedLine
-      );
-      previousLineIndent = currentIndent;
-    }
-  }
-  return indentedLines;
-}
-
-/**
- * Preprocesses the clipboard text for pasting.
- * Removes leading/trailing whitespace, handles Python REPL prompts, and splits into lines.
- * @param {string} clipboardText - The raw text from the clipboard.
- * @returns {{lines: string[], separator: string}} An object containing the processed lines and the detected line separator.
- */
-function preprocessClipboardText(clipboardText) {
-  const lineEndingPattern = clipboardText.includes("\r\n") ? "\\r\\n" : "\\n";
-  const processedText = clipboardText
-    .trimEnd()
-    .replace(new RegExp(`^(?:${lineEndingPattern})+`), '')
-    .replace(/^(>>> |\.\.\. )/gm, '');
-  const separator = clipboardText.includes("\r\n") ? "\r\n" : "\n";
-  const lines = processedText.split(separator);
-  return { lines, separator };
-}
-
-/**
- * Calculates the properly indented lines for pasting.
- * @param {string[]} processedLines - Lines after preprocessing.
- * @param {number} baseIndentLevel - The base indentation level for pasting.
- * @param {string} indentUnit - The indentation unit ("  ", "\t", etc.).
- * @returns {string[]} The array of lines with correct indentation applied.
- */
-function calculateIndentedLines(processedLines, baseIndentLevel, indentUnit) {
-  const hasLostIndent = processedLines.every((line) => !/^\s+/.test(line));
-  const guessedIndentUnit = getGuessedIndentUnit(processedLines);
-  const normalizedLines = processedLines.map((line) =>
-    line.replaceAll(guessedIndentUnit, indentUnit)
-  );
-  return indentLines(
-    normalizedLines,
-    baseIndentLevel,
-    indentUnit,
-    hasLostIndent
-  );
-}
-
-/**
- * Adjusts the text to be inserted if pasting mid-line under specific conditions.
- * Removes leading indent from the first line if pasting into non-whitespace content.
- * @param {vscode.TextEditor} editor - The active text editor.
- * @param {vscode.Selection} selection - The current selection.
- * @param {string} insertText - The text intended for insertion.
- * @returns {string} The potentially adjusted insert text.
- */
-function adjustInsertTextForMidLinePaste(editor, selection, insertText) {
-  const pos = selection.start;
-  const startLine = selection.start.line;
-  const endLine = selection.end.line;
-  const endChar = selection.end.character;
-  const isSingleLine = startLine === endLine;
-  if (pos.character > 0) {
-    const line = editor.document.lineAt(pos.line).text;
-    const textBefore = line.substring(0, pos.character);
-    const textAfter = line.substring(pos.character);
-    const textBeforeIsWhitespace = /^\s*$/.test(textBefore);
-    const textAfterIsWhitespace = /^\s*$/.test(textAfter);
-    if (
-      isSingleLine &&
-      (!textBeforeIsWhitespace || (endChar !== line.length && !textAfterIsWhitespace))
-    ) {
-      return insertText.replace(/^\s+/, "");
-    }
-  }
-  return insertText;
-}
-
-/**
  * Inserts the final processed and indented text into the editor.
  * Handles removing surrounding whitespace and adjusting insertion based on cursor position.
  * @param {vscode.TextEditor} editor - The active text editor.
@@ -253,7 +264,6 @@ async function insertPastedText(editor, insertText, separator) {
   });
 }
 
-
 /**
  * Performs a cut operation, adjusting indentation of subsequent lines if needed.
  * @param {vscode.TextEditor} editor - The active text editor.
@@ -264,8 +274,7 @@ async function cut(editor) {
   if (selection.isEmpty) return;
   await editor.edit((editBuilder) => {
     const selectedText = editor.document
-      .getText(new vscode.Range(selection.start, selection.end))
-      .trim();
+      .getText(new vscode.Range(selection.start, selection.end));
     editBuilder.delete(selection);
     vscode.env.clipboard.writeText(selectedText);
     const startLine = selection.start.line;
@@ -274,7 +283,7 @@ async function cut(editor) {
     const isSingleLine = startLine === endLine;
     const isSingleLineWithNewline = startLine + 1 === endLine && endChar === 0;
     if (
-      !((isSingleLine || isSingleLineWithNewline) && selectedText.endsWith(":"))
+      !((isSingleLine || isSingleLineWithNewline) && getCodePart(selectedText).endsWith(':'))
     ) {
       return;
     }
