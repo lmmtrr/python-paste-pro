@@ -79,8 +79,9 @@ function indentLines(lines, baseIndentLevel, indentUnit, hasLostIndent) {
         previousLineIndent = currentIndent;
         const firstIndent = firstLine.match(/^\s*/)[0];
         if (
-          firstIndent.length > 0 &&
-          firstIndent.length % indentUnit.length === 0
+          firstIndent.length % indentUnit.length === 0 &&
+          firstIndent.length > currentIndent.length &&
+          !getCodePart(firstLine).endsWith(':')
         ) {
           previousLineIndent = firstIndent;
           if (/[:({[]$/.test(getCodePart(firstLine)))
@@ -89,7 +90,7 @@ function indentLines(lines, baseIndentLevel, indentUnit, hasLostIndent) {
         isPreviousLineIndentSet = true;
       }
       const indentDiff =
-        (currentIndent.length - previousLineIndent.length) / indentUnit.length;
+        Math.floor((currentIndent.length - previousLineIndent.length) / indentUnit.length);
       currentIndentLevel += indentDiff;
       newIndentLevel = baseIndentLevel + currentIndentLevel;
       indentedLines.push(
@@ -157,20 +158,20 @@ function getBaseIndentLevel(editor, indentUnit) {
     currentIndent.length > 0 &&
     currentIndent.length % indentUnit.length === 0
   ) {
-    return currentIndent.length / indentUnit.length;
+    return Math.floor(currentIndent.length / indentUnit.length);
   } else if (!selection.isEmpty && startCharacter === 0) {
-    return currentIndent.length / indentUnit.length;
+    return Math.floor(currentIndent.length / indentUnit.length);
   } else if (startCharacter % indentUnit.length !== 0) {
-    return currentIndent.length / indentUnit.length;
+    return Math.floor(currentIndent.length / indentUnit.length);
   } else if (startCharacter % indentUnit.length === 0 && startCharacter !== 0) {
-    return startCharacter / indentUnit.length;
+    return Math.floor(startCharacter / indentUnit.length);
   }
   const prevLineNumber = startLine - 1;
   if (prevLineNumber < 0) return 0;
   const prevLine = editor.document.lineAt(prevLineNumber);
   if (prevLine.text.trim() === "") return 0;
   const prevIndent = prevLine.text.match(/^\s*/)[0];
-  const prevIndentLevel = prevIndent.length / indentUnit.length;
+  const prevIndentLevel = Math.floor(prevIndent.length / indentUnit.length);
   return getCodePart(prevLine.text).endsWith(':')
     ? prevIndentLevel + 1
     : prevIndentLevel;
@@ -291,7 +292,7 @@ async function cut(editor) {
     const baseLine = editor.document.lineAt(startLine);
     const indentUnit = getIndentUnit(editor);
     const baseIndent = baseLine.text.match(/^\s*/)?.[0] || ""; // Already updated, ensure it stays
-    const baseIndentLevel = baseIndent.length / indentUnit.length;
+    const baseIndentLevel = Math.floor(baseIndent.length / indentUnit.length);
 
     // Determine the range of lines to dedent
     let startLineToDedent = startLine + 1;
@@ -301,7 +302,7 @@ async function cut(editor) {
       endLineToDedent++;
       if (!currentLine.text.trim()) continue;
       const currentIndent = currentLine.text.match(/^\s*/)?.[0] || ""; // Added ?. and fallback
-      const currentIndentLevel = currentIndent.length / indentUnit.length;
+      const currentIndentLevel = Math.floor(currentIndent.length / indentUnit.length);
       if (currentIndentLevel <= baseIndentLevel) break;
     }
 
@@ -329,7 +330,6 @@ async function paste(editor) {
   const clipboardText = await vscode.env.clipboard.readText();
   if (!clipboardText.trim()) return;
   const { lines: processedLines, separator } = preprocessClipboardText(clipboardText);
-  if (processedLines.length === 0 || (processedLines.length === 1 && !processedLines[0])) return;
   const indentUnit = getIndentUnit(editor);
   const baseIndentLevel = getBaseIndentLevel(editor, indentUnit);
   const indentedLines = calculateIndentedLines(processedLines, baseIndentLevel, indentUnit);
