@@ -7,7 +7,7 @@
 ## Features
 
 - **Smart Paste**: Automatically adjusts the indentation of pasted code to align with the cursor's context or selected text. It preserves relative indentation when present and attempts to reconstruct it when lost.
-- **Smart Cut**: Cuts selected text and, if the cut ends with a colon (e.g., `if condition:`), dedents the subsequent code block to maintain proper structure.
+- **Smart Cut**: Cuts selected text—or the current line if no text is selected—and, if the cut ends with a colon (e.g., `if condition:`), dedents the subsequent code block to maintain proper structure.
 - **Indentation Normalization**: Ensures pasted indentation matches your editor’s settings (tabs vs. spaces) for consistency.
 - **Context-Aware Indentation**: Calculates the correct indentation level based on the current or previous line (e.g., increasing indentation after a colon).
 
@@ -35,9 +35,9 @@ Alternatively, download the `.vsix` file from the [VSCode Marketplace](https://m
 
 ### Smart Cut
 
-1. Select text in a Python file.
+1. Select text in a Python file (or simply position the cursor on a line with no active selection).
 2. Press `Ctrl+X` (or `Cmd+X` on macOS).
-3. If the cut text ends with a colon (e.g., `for item in list:`), the following block is dedented to maintain proper formatting.
+3. If the cut text/line ends with a colon (e.g., `for item in list:`), the following block is dedented to maintain proper formatting.
 
 ## Commands
 

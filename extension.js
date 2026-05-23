@@ -78,15 +78,24 @@ async function insertPastedText(editor, insertText, separator) {
 async function cut(editor) {
   if (!editor || editor.document.languageId !== "python") return;
   const selection = editor.selection;
-  if (selection.isEmpty) return;
+  let targetSelection = selection;
+  if (selection.isEmpty) {
+    const lineIndex = selection.start.line;
+    if (lineIndex < editor.document.lineCount - 1) {
+      targetSelection = new vscode.Selection(lineIndex, 0, lineIndex + 1, 0);
+    } else {
+      const line = editor.document.lineAt(lineIndex);
+      targetSelection = new vscode.Selection(lineIndex, 0, lineIndex, line.text.length);
+    }
+  }
   await editor.edit((editBuilder) => {
     const selectedText = editor.document
-      .getText(new vscode.Range(selection.start, selection.end));
-    editBuilder.delete(selection);
+      .getText(new vscode.Range(targetSelection.start, targetSelection.end));
+    editBuilder.delete(targetSelection);
     vscode.env.clipboard.writeText(selectedText);
-    const startLine = selection.start.line;
-    const endLine = selection.end.line;
-    const endChar = selection.end.character;
+    const startLine = targetSelection.start.line;
+    const endLine = targetSelection.end.line;
+    const endChar = targetSelection.end.character;
     const isSingleLine = startLine === endLine;
     const isSingleLineWithNewline = startLine + 1 === endLine && endChar === 0;
     if (
