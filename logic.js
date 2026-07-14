@@ -184,13 +184,57 @@ function preprocessClipboardText(clipboardText) {
  * @param {string} indentUnit - The indentation unit (spaces or tabs).
  * @returns {number} The base indentation level in units.
  */
-function getBaseIndentLevel(editor, indentUnit) {
+function getBaseIndentLevel(editor, indentUnit, processedLines = []) {
   const selection = editor.selection;
   const startPos = selection.start;
   const startLine = startPos.line;
   const startCharacter = startPos.character;
   const currentLine = editor.document.lineAt(startLine);
   const currentIndent = currentLine.text.match(/^\s*/)[0];
+  if (currentLine.text.trim() === "" && currentIndent.length === 0) {
+    let prevLineNumber = startLine - 1;
+    let prevIndentLevel = 0;
+    while (prevLineNumber >= 0) {
+      const prevLine = editor.document.lineAt(prevLineNumber);
+      if (prevLine.text.trim() !== "") {
+        const prevIndent = prevLine.text.match(/^\s*/)[0];
+        prevIndentLevel = Math.floor(prevIndent.length / indentUnit.length);
+        if (getCodePart(prevLine.text).endsWith(':')) {
+          prevIndentLevel += 1;
+        }
+        break;
+      }
+      prevLineNumber--;
+    }
+    let nextLineNumber = startLine + 1;
+    let nextIndentLevel = prevIndentLevel;
+    let foundNext = false;
+    const totalLines = editor.document.lineCount;
+    while (nextLineNumber < totalLines) {
+      const nextLine = editor.document.lineAt(nextLineNumber);
+      if (nextLine.text.trim() !== "") {
+        const nextIndent = nextLine.text.match(/^\s*/)[0];
+        nextIndentLevel = Math.floor(nextIndent.length / indentUnit.length);
+        foundNext = true;
+        break;
+      }
+      nextLineNumber++;
+    }
+    if (!foundNext) {
+      return Math.max(0, prevIndentLevel - 1);
+    }
+    const firstCodeLine = processedLines.find((line) => {
+      const trimmed = line.trim();
+      return trimmed !== "" && !trimmed.startsWith("#");
+    });
+    if (firstCodeLine) {
+      const trimmedLine = firstCodeLine.trim();
+      if (/^(async\s+def\s+|def\s+|class\s+|@)/.test(trimmedLine)) {
+        return nextIndentLevel;
+      }
+    }
+    return prevIndentLevel;
+  }
   if (
     selection.isEmpty &&
     currentIndent.length > 0 &&

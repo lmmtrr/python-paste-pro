@@ -133,7 +133,7 @@ async function paste(editor) {
   if (!clipboardText.trim()) return;
   const { lines: processedLines, separator } = preprocessClipboardText(clipboardText);
   const indentUnit = getIndentUnit(editor);
-  const baseIndentLevel = getBaseIndentLevel(editor, indentUnit);
+  const baseIndentLevel = getBaseIndentLevel(editor, indentUnit, processedLines);
   const indentedLines = calculateIndentedLines(processedLines, baseIndentLevel, indentUnit);
   const insertText = indentedLines.join(separator);
   await insertPastedText(editor, insertText, separator);

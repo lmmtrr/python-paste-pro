@@ -1,6 +1,6 @@
 {
   "name": "python-paste-pro",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "publisher": "00",
   "engines": {
     "vscode": "^1.121.0"
