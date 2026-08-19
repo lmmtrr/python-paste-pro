@@ -191,6 +191,20 @@ function getBaseIndentLevel(editor, indentUnit, processedLines = []) {
   const startCharacter = startPos.character;
   const currentLine = editor.document.lineAt(startLine);
   const currentIndent = currentLine.text.match(/^\s*/)[0];
+  let prevLineNumber = startLine - 1;
+  while (prevLineNumber >= 0) {
+    const prevLine = editor.document.lineAt(prevLineNumber);
+    const codePart = getCodePart(prevLine.text);
+    if (codePart.length > 0) {
+      if (codePart.endsWith(':')) {
+        const prevIndent = prevLine.text.match(/^\s*/)[0];
+        const prevIndentLevel = Math.floor(prevIndent.length / indentUnit.length);
+        return prevIndentLevel + 1;
+      }
+      break;
+    }
+    prevLineNumber--;
+  }
   if (currentLine.text.trim() === "" && currentIndent.length === 0) {
     let prevLineNumber = startLine - 1;
     let prevIndentLevel = 0;
@@ -248,9 +262,9 @@ function getBaseIndentLevel(editor, indentUnit, processedLines = []) {
   } else if (startCharacter % indentUnit.length === 0 && startCharacter !== 0) {
     return Math.floor(startCharacter / indentUnit.length);
   }
-  const prevLineNumber = startLine - 1;
-  if (prevLineNumber < 0) return 0;
-  const prevLine = editor.document.lineAt(prevLineNumber);
+  const fallbackPrevLineNumber = startLine - 1;
+  if (fallbackPrevLineNumber < 0) return 0;
+  const prevLine = editor.document.lineAt(fallbackPrevLineNumber);
   if (prevLine.text.trim() === "") return 0;
   const prevIndent = prevLine.text.match(/^\s*/)[0];
   const prevIndentLevel = Math.floor(prevIndent.length / indentUnit.length);
