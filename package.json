@@ -1,9 +1,9 @@
 {
   "name": "python-paste-pro",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "publisher": "00",
   "engines": {
-    "vscode": "^1.133.0"
+    "vscode": "^1.140.0"
   },
   "displayName": "Python Paste Pro",
   "description": "Enhances Python pasting in VSCode with smart indentation",
@@ -58,7 +58,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
-    "@types/vscode": "^1.121.0",
+    "@types/vscode": "^1.140.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.19.0"
